@@ -1,0 +1,12 @@
+Version: 0.1.0.0
+CompanyName: aerosadegh
+FileDescription: Redis Monitoring Tools
+InternalName: RedisMonitor
+LegalCopyright: © AeroSadegh. All rights reserved.
+OriginalFilename: RedMoon.exe
+ProductName: Redis Monitoring Tools
+Translation:
+  - langID: 0
+    charsetID: 1200
+  - langID: 1033
+    charsetID: 1252
