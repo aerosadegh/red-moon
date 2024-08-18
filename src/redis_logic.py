@@ -3,7 +3,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 
 class RedisSubscriber(QThread):
-    new_channel = pyqtSignal(str)
+    new_channel = pyqtSignal(str, str)  # Emit both channel name and data
 
     def __init__(self, redis_url, channel_pattern):
         super().__init__()
@@ -16,4 +16,6 @@ class RedisSubscriber(QThread):
         pubsub.psubscribe(self.channel_pattern)
         for message in pubsub.listen():
             if message["type"] == "pmessage":
-                self.new_channel.emit(message["channel"].decode("utf-8"))
+                channel = message["channel"].decode("utf-8")
+                data = message["data"].decode("utf-8")
+                self.new_channel.emit(channel, data)
