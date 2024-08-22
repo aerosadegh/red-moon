@@ -1,6 +1,3 @@
-import os
-import sys
-
 from PyQt5.QtWidgets import (
     QApplication,
     QWidget,
@@ -15,56 +12,16 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QPushButton,
     QFileDialog,
+    QAction,
+    QMenuBar,
 )
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QColor, QIcon
+from PyQt5.QtGui import QColor
+
+from gui.utils import resource_path
+from gui.output_window import OutputWindow
 from redis_logic import RedisSubscriber
-
-
-def resource_path(relative_path):
-    """Get absolute path to resource, works for dev and for PyInstaller"""
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
-
-
-class OutputWindow(QDialog):
-    def __init__(self, channel_name, parent=None):
-        super().__init__(parent)
-        self.channel_name = channel_name
-        self.setWindowTitle(f"Output for {channel_name}")
-        layout = QVBoxLayout()
-
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        layout.addWidget(self.output_text)
-
-        self.export_button = QPushButton("Export")
-        self.export_button.clicked.connect(self.export_content)
-        layout.addWidget(self.export_button)
-
-        self.setLayout(layout)
-        self.setWindowFlags(Qt.Tool)
-
-    def update_output(self, data: str):
-        self.output_text.append("\n" + data)
-
-    def export_content(self):
-        options = QFileDialog.Options()
-        file_name, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save File",
-            f"{self.channel_name}.txt",
-            "Text Files (*.txt);;All Files (*)",
-            options=options,
-        )
-        if file_name:
-            with open(file_name, "w", encoding="utf-8") as file:
-                file.write(self.output_text.toPlainText())
 
 
 class RedisMonitor(QWidget):
@@ -75,11 +32,21 @@ class RedisMonitor(QWidget):
         self.subscriber = None
         self.output_windows = {}  # Initialize the output_windows dictionary
         self.open_window_positions = []
+        self.reorder_channels = True
 
     def initUI(self):
         self.setWindowTitle("Redis Monitoring Tool")
         layout = QVBoxLayout()
         self.setWindowIcon(QIcon(resource_path("assets/red-moon.png")))
+
+        self.menu_bar = QMenuBar(self)
+        self.menu = self.menu_bar.addMenu("Settings")
+        self.reorder_action = QAction("Reorder Channels", self)
+        self.reorder_action.setCheckable(True)
+        self.reorder_action.setChecked(True)
+        self.reorder_action.triggered.connect(self.toggle_reorder)
+        self.menu.addAction(self.reorder_action)
+        layout.setMenuBar(self.menu_bar)
 
         self.redis_url_label = QLabel("Redis URL:")
         self.redis_url_input = QLineEdit()
@@ -90,7 +57,7 @@ class RedisMonitor(QWidget):
         self.channel_pattern_input = QLineEdit()
 
         self.redis_url_input.setPlaceholderText("redis://localhost:6379")
-        self.redis_url_input.setText("redis://localhost:6379")
+        self.redis_url_input.setText("redis://192.168.1.102:6379")
         self.channel_pattern_input.setPlaceholderText("*")
         self.channel_pattern_input.setText("*")
 
@@ -121,6 +88,9 @@ class RedisMonitor(QWidget):
             window.close()
         event.accept()
 
+    def toggle_reorder(self):
+        self.reorder_channels = self.reorder_action.isChecked()
+
     def start_monitoring(self):
         redis_url = self.redis_url_input.text()
         channel_pattern = self.channel_pattern_input.text()
@@ -135,29 +105,81 @@ class RedisMonitor(QWidget):
             self.status_bar.showMessage("Status: Not Monitoring")
 
     def add_channel(self, channel_name, data):
+        # Get the list of channel names
+        channels_names = [
+            self.channel_list.item(i).text() for i in range(self.channel_list.count())
+        ]
+
         # Check if the channel already exists in the list
-        items = [self.channel_list.item(i).text() for i in range(self.channel_list.count())]
-        if channel_name in items:
-            # Remove the existing item
-            index = items.index(channel_name)
-            self.channel_list.takeItem(index)
-        # Create a new QListWidgetItem
-        new_item = QListWidgetItem(channel_name)
-        # Add the new item to the top of the list
-        self.channel_list.insertItem(0, new_item)
-        self.highlight_item(new_item)
+        if channel_name in channels_names:
+            index = channels_names.index(channel_name)
+            item = (
+                self.channel_list.takeItem(index)
+                if self.reorder_channels
+                else self.channel_list.item(index)
+            )
+        else:
+            item = QListWidgetItem(channel_name)
+            self.channel_list.addItem(item)
+
+        # Highlight the item
+        self.highlight_item(item)
+
+        # Reorder the item if necessary
+        if self.reorder_channels and channel_name in channels_names:
+            self.channel_list.insertItem(0, item)
 
         # Ensure the output window exists
         if channel_name not in self.output_windows:
             self.output_windows[channel_name] = OutputWindow(channel_name)
+
         # Update the output window with the new data
         self.output_windows[channel_name].update_output(data)
 
     def highlight_item(self, item):
-        # Set the background color to highlight
-        item.setBackground(QColor("yellow"))
-        # Create a QTimer to revert the background color after 1 second
-        QTimer.singleShot(1000, lambda: item.setBackground(QColor("white")))
+        # Define the start and end colors
+        start_color = QColor("yellow")
+        end_color = QColor("white")
+
+        # Set the initial background color
+        item.setBackground(start_color)
+
+        # Define the duration and interval for the transition
+        duration = 1000  # Duration in milliseconds
+        interval = 50  # Interval in milliseconds
+
+        # Calculate the number of steps
+        steps = duration // interval
+
+        # Calculate the color change per step
+        delta_r = (end_color.red() - start_color.red()) / steps
+        delta_g = (end_color.green() - start_color.green()) / steps
+        delta_b = (end_color.blue() - start_color.blue()) / steps
+
+        # Initialize the current step
+        current_step = 0
+
+        def update_color():
+            nonlocal current_step
+            if current_step < steps:
+                # Calculate the new color
+                new_color = QColor(
+                    int(start_color.red() + delta_r * current_step),
+                    int(start_color.green() + delta_g * current_step),
+                    int(start_color.blue() + delta_b * current_step),
+                )
+                # Set the new background color
+                item.setBackground(new_color)
+                # Increment the current step
+                current_step += 1
+            else:
+                # Stop the timer when the transition is complete
+                timer.stop()
+
+        # Create a QTimer to update the color at regular intervals
+        timer = QTimer()
+        timer.timeout.connect(update_color)
+        timer.start(interval)
 
     def open_output_window(self, item: QListWidgetItem):
         channel_name = item.text()
@@ -211,10 +233,3 @@ class RedisMonitor(QWidget):
         output_window.destroyed.connect(
             lambda: self.open_window_positions.append((self.output_window_x, self.output_window_y))
         )
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    monitor = RedisMonitor()
-    monitor.show()
-    sys.exit(app.exec_())
