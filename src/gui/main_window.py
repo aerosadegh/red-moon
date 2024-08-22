@@ -1,17 +1,17 @@
+from __future__ import annotations
+
 from PyQt5.QtWidgets import (
     QApplication,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QListWidget,
     QListWidgetItem,
     QStatusBar,
-    QDialog,
-    QTextEdit,
     QPushButton,
-    QFileDialog,
     QAction,
     QMenuBar,
 )
@@ -24,212 +24,249 @@ from gui.output_window import OutputWindow
 from redis_logic import RedisSubscriber
 
 
-class RedisMonitor(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.initUI()
+class UISetup:
+    def __init__(self, main_widget: "RedisMonitor"):
+        self.main_widget = main_widget
 
-        self.subscriber = None
-        self.output_windows = {}  # Initialize the output_windows dictionary
-        self.open_window_positions = []
-        self.reorder_channels = True
+        self.menu_bar = None
+        self.redis_url_label = None
+        self.redis_url_input = None
+        self.channel_pattern_label = None
+        self.channel_pattern_input = None
+        self.start_button = None
+        self.stop_button = None
 
-    def initUI(self):
-        self.setWindowTitle("Redis Monitoring Tool")
+    def setup_ui(self):
+        self.main_widget.setWindowTitle("Redis Monitoring Tool")
+        self.main_widget.setMinimumWidth(500)
         layout = QVBoxLayout()
-        self.setWindowIcon(QIcon(resource_path("assets/red-moon.png")))
+        self.main_widget.setWindowIcon(QIcon(resource_path("assets/red-moon.png")))
 
-        self.menu_bar = QMenuBar(self)
-        self.menu = self.menu_bar.addMenu("Settings")
-        self.reorder_action = QAction("Reorder Channels", self)
-        self.reorder_action.setCheckable(True)
-        self.reorder_action.setChecked(True)
-        self.reorder_action.triggered.connect(self.toggle_reorder)
-        self.menu.addAction(self.reorder_action)
+        self.menu_bar = self.create_menu_bar()
         layout.setMenuBar(self.menu_bar)
 
-        self.redis_url_label = QLabel("Redis URL:")
-        self.redis_url_input = QLineEdit()
-        layout.addWidget(self.redis_url_label)
-        layout.addWidget(self.redis_url_input)
+        self.redis_url_label, self.redis_url_input = self.create_labeled_input(
+            layout, "Redis URL:", "redis://localhost:6379", "redis://localhost:6379"
+        )
+        self.channel_pattern_label, self.channel_pattern_input = self.create_labeled_input(
+            layout, "Channel Pattern:", "*", "*"
+        )
 
-        self.channel_pattern_label = QLabel("Channel Pattern:")
-        self.channel_pattern_input = QLineEdit()
+        self.add_monitoring_buttons(layout)
 
-        self.redis_url_input.setPlaceholderText("redis://localhost:6379")
-        self.redis_url_input.setText("redis://192.168.1.102:6379")
-        self.channel_pattern_input.setPlaceholderText("*")
-        self.channel_pattern_input.setText("*")
+        self.main_widget.channel_list = QListWidget()
+        self.main_widget.channel_list.itemClicked.connect(self.main_widget.open_output_window)
+        layout.addWidget(self.main_widget.channel_list)
 
-        layout.addWidget(self.channel_pattern_label)
-        layout.addWidget(self.channel_pattern_input)
+        self.main_widget.status_bar = QStatusBar()
+        layout.addWidget(self.main_widget.status_bar)
+        self.main_widget.status_bar.showMessage("Status: Not Monitoring")
+
+        self.main_widget.setLayout(layout)
+        self.main_widget.setMaximumSize(
+            self.main_widget.width() + 200, self.main_widget.height() + 100
+        )
+
+    def add_monitoring_buttons(self, layout: QVBoxLayout):
+        button_layout = QHBoxLayout()  # Horizontal layout for the buttons
 
         self.start_button = QPushButton("Start Monitoring")
-        self.start_button.clicked.connect(self.start_monitoring)
-        layout.addWidget(self.start_button)
+        self.start_button.clicked.connect(self.main_widget.start_monitoring)
+        button_layout.addWidget(self.start_button)
 
         self.stop_button = QPushButton("Stop Monitoring")
-        self.stop_button.clicked.connect(self.stop_monitoring)
-        layout.addWidget(self.stop_button)
+        self.stop_button.clicked.connect(self.main_widget.stop_monitoring)
+        button_layout.addWidget(self.stop_button)
 
-        self.channel_list = QListWidget()
-        self.channel_list.itemClicked.connect(self.open_output_window)
-        layout.addWidget(self.channel_list)
+        layout.addLayout(button_layout)  # Add the horizontal layout to the main layout
 
-        self.status_bar = QStatusBar()
-        layout.addWidget(self.status_bar)
-        self.status_bar.showMessage("Status: Not Monitoring")
+    def create_menu_bar(self):
+        menu_bar = QMenuBar(self.main_widget)
+        menu = menu_bar.addMenu("Settings")
+        reorder_action = QAction("Reorder Channels", self.main_widget)
+        reorder_action.setCheckable(True)
+        reorder_action.setChecked(True)
+        reorder_action.triggered.connect(self.main_widget.toggle_reorder)
+        menu.addAction(reorder_action)
+        return menu_bar
 
-        self.setLayout(layout)
-        self.setMaximumSize(self.width() + 200, self.height() + 100)
+    def create_labeled_input(
+        self, layout: QVBoxLayout, label_text: str, placeholder_text: str, default_text: str
+    ):
+        label = QLabel(label_text)
+        input_field = QLineEdit()
+        input_field.setPlaceholderText(placeholder_text)
+        input_field.setText(default_text)
+        layout.addWidget(label)
+        layout.addWidget(input_field)
+        return label, input_field
 
-    def closeEvent(self, event):
-        for window in self.output_windows.values():
-            window.close()
-        event.accept()
+    def create_button(self, layout, text, callback):
+        button = QPushButton(text)
+        button.clicked.connect(callback)
+        layout.addWidget(button)
+        return button
 
-    def toggle_reorder(self):
-        self.reorder_channels = self.reorder_action.isChecked()
 
-    def start_monitoring(self):
-        redis_url = self.redis_url_input.text()
-        channel_pattern = self.channel_pattern_input.text()
-        self.subscriber = RedisSubscriber(redis_url, channel_pattern)
-        self.subscriber.new_channel.connect(self.add_channel)
-        self.subscriber.start()
-        self.status_bar.showMessage("Status: Monitoring")
+class ChannelManager:
+    def __init__(self, main_widget: "RedisMonitor"):
+        self.main_widget = main_widget
 
-    def stop_monitoring(self):
-        if hasattr(self, "subscriber") and self.subscriber:
-            self.subscriber.terminate()
-            self.status_bar.showMessage("Status: Not Monitoring")
-
-    def add_channel(self, channel_name, data):
-        # Get the list of channel names
+    def add_channel(self, channel_name: str, data: str):
         channels_names = [
-            self.channel_list.item(i).text() for i in range(self.channel_list.count())
+            self.main_widget.channel_list.item(i).text()
+            for i in range(self.main_widget.channel_list.count())
         ]
 
-        # Check if the channel already exists in the list
         if channel_name in channels_names:
             index = channels_names.index(channel_name)
             item = (
-                self.channel_list.takeItem(index)
-                if self.reorder_channels
-                else self.channel_list.item(index)
+                self.main_widget.channel_list.takeItem(index)
+                if self.main_widget.reorder_channels
+                else self.main_widget.channel_list.item(index)
             )
         else:
             item = QListWidgetItem(channel_name)
-            self.channel_list.addItem(item)
+            self.main_widget.channel_list.addItem(item)
 
-        # Highlight the item
-        self.highlight_item(item)
+        Highlighter.highlight_item(item)
 
-        # Reorder the item if necessary
-        if self.reorder_channels and channel_name in channels_names:
-            self.channel_list.insertItem(0, item)
+        if self.main_widget.reorder_channels and channel_name in channels_names:
+            self.main_widget.channel_list.insertItem(0, item)
 
-        # Ensure the output window exists
-        if channel_name not in self.output_windows:
-            self.output_windows[channel_name] = OutputWindow(channel_name)
+        if channel_name not in self.main_widget.output_windows:
+            self.main_widget.output_windows[channel_name] = OutputWindow(channel_name)
 
-        # Update the output window with the new data
-        self.output_windows[channel_name].update_output(data)
+        self.main_widget.output_windows[channel_name].update_output(data)
 
-    def highlight_item(self, item):
-        # Define the start and end colors
+
+class Highlighter:
+    @staticmethod
+    def highlight_item(item: QListWidgetItem):
         start_color = QColor("yellow")
         end_color = QColor("white")
 
-        # Set the initial background color
         item.setBackground(start_color)
 
-        # Define the duration and interval for the transition
-        duration = 1000  # Duration in milliseconds
-        interval = 50  # Interval in milliseconds
+        duration = 1000
+        interval = 50
 
-        # Calculate the number of steps
         steps = duration // interval
-
-        # Calculate the color change per step
         delta_r = (end_color.red() - start_color.red()) / steps
         delta_g = (end_color.green() - start_color.green()) / steps
         delta_b = (end_color.blue() - start_color.blue()) / steps
 
-        # Initialize the current step
         current_step = 0
 
         def update_color():
             nonlocal current_step
             if current_step < steps:
-                # Calculate the new color
                 new_color = QColor(
                     int(start_color.red() + delta_r * current_step),
                     int(start_color.green() + delta_g * current_step),
                     int(start_color.blue() + delta_b * current_step),
                 )
-                # Set the new background color
                 item.setBackground(new_color)
-                # Increment the current step
                 current_step += 1
             else:
-                # Stop the timer when the transition is complete
                 timer.stop()
 
-        # Create a QTimer to update the color at regular intervals
         timer = QTimer()
         timer.timeout.connect(update_color)
         timer.start(interval)
 
+
+class OutputWindowManager:
+    def __init__(self, main_widget: "RedisMonitor"):
+        self.main_widget = main_widget
+
     def open_output_window(self, item: QListWidgetItem):
         channel_name = item.text()
-        if channel_name not in self.output_windows:
-            return  # Ensure the window exists
+        if channel_name not in self.main_widget.output_windows:
+            return
 
-        output_window = self.output_windows[channel_name]
-        if not isinstance(output_window, OutputWindow):
-            raise TypeError("output_window must be an OutputWindow")
-
+        output_window = self.main_widget.output_windows[channel_name]
         output_window.show()
 
-        # Constants for positioning
         INITIAL_OFFSET_Y = 200
         WINDOW_SPACING_Y = 275
         MINIMUM_WIDTH = 500
         SCREEN_MARGIN = 50
 
-        if not hasattr(self, "open_window_positions"):
-            self.open_window_positions = []
-
-        # Find the next available position
-        if self.open_window_positions:
-            self.output_window_x, self.output_window_y = self.open_window_positions.pop(0)
-        else:
-            if not hasattr(self, "output_window_x"):
-                self.output_window_x = self.x() + self.width()
-                self.output_window_y = self.y() - INITIAL_OFFSET_Y
+        if not self.main_widget.open_window_positions:
+            if not hasattr(self.main_widget, "output_window_x"):
+                self.main_widget.output_window_x = self.main_widget.x() + self.main_widget.width()
+                self.main_widget.output_window_y = self.main_widget.y() - INITIAL_OFFSET_Y
             else:
-                self.output_window_y += WINDOW_SPACING_Y
+                self.main_widget.output_window_y += WINDOW_SPACING_Y
 
             screen_geometry = QApplication.desktop().availableGeometry()
 
             if (
-                self.output_window_x + output_window.width()
+                self.main_widget.output_window_x + output_window.width()
                 > screen_geometry.width() - SCREEN_MARGIN
             ):
-                self.output_window_x = self.x() + self.width()  # Reset to right of main window
+                self.main_widget.output_window_x = self.main_widget.x() + self.main_widget.width()
 
             if (
-                self.output_window_y + output_window.height()
+                self.main_widget.output_window_y + output_window.height()
                 > screen_geometry.height() - SCREEN_MARGIN
             ):
-                self.output_window_y = self.y()  # Reset to top of screen
+                self.main_widget.output_window_y = self.main_widget.y()
 
-        output_window.move(self.output_window_x, self.output_window_y)
+        else:
+            self.main_widget.output_window_x, self.main_widget.output_window_y = (
+                self.main_widget.open_window_positions.pop(0)
+            )
+
+        output_window.move(self.main_widget.output_window_x, self.main_widget.output_window_y)
         output_window.resize(MINIMUM_WIDTH, output_window.height())
         output_window.setMinimumWidth(MINIMUM_WIDTH)
 
-        # Store the position when the window is closed
         output_window.destroyed.connect(
-            lambda: self.open_window_positions.append((self.output_window_x, self.output_window_y))
+            lambda: self.main_widget.open_window_positions.append(
+                (self.main_widget.output_window_x, self.main_widget.output_window_y)
+            )
         )
+
+
+class RedisMonitor(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_classes()
+        self.ui_setup.setup_ui()
+
+        self.reorder_channels = True
+        self.subscriber = None
+
+    def init_classes(self):
+        self.ui_setup = UISetup(self)
+        self.channel_manager = ChannelManager(self)
+        self.window_manager = OutputWindowManager(self)
+        self.subscriber = None
+        self.output_windows = {}
+        self.open_window_positions = []
+
+    def toggle_reorder(self):
+        self.reorder_channels = not self.reorder_channels
+
+    def start_monitoring(self):
+        redis_url = self.ui_setup.redis_url_input.text()
+        channel_pattern = self.ui_setup.channel_pattern_input.text()
+        self.subscriber = RedisSubscriber(redis_url, channel_pattern)
+        self.subscriber.new_channel.connect(self.channel_manager.add_channel)
+        self.subscriber.start()
+        self.status_bar.showMessage("Status: Monitoring")
+
+    def stop_monitoring(self):
+        if self.subscriber:
+            self.subscriber.terminate()
+            self.status_bar.showMessage("Status: Not Monitoring")
+
+    def open_output_window(self, item: QListWidgetItem):
+        self.window_manager.open_output_window(item)
+
+    def closeEvent(self, event):
+        for window in self.output_windows.values():
+            window.close()
+        event.accept()
