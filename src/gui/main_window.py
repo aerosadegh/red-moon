@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import QTimer
-
 from plyer import notification
 
 from redis_logic import RedisSubscriber
@@ -48,6 +47,7 @@ class UISetup:
     def setup_ui(self):
         self.main_widget.setWindowTitle("Redis Monitoring Tool")
         self.main_widget.setMinimumWidth(400)
+
         layout = QVBoxLayout()
         self.main_widget.setWindowIcon(QIcon(resource_path("assets/red-moon.png")))
 
@@ -116,6 +116,7 @@ class UISetup:
         layout.addWidget(input_field)
         return input_field
 
+
     def create_button(self, layout, text, callback):
         button = QPushButton(text)
         button.clicked.connect(callback)
@@ -138,6 +139,7 @@ class ChannelManager:
             self.main_widget.status_bar.showMessage(f"Status: {status}")
             return
         self.main_widget.status_bar.showMessage("Status: Monitoring")
+
 
         if channel_name in channels_names:
             index = channels_names.index(channel_name)
@@ -185,11 +187,13 @@ class RedisMonitor(QWidget):
         self.subscriber = None
         self.monitoring = False  # To track the state of monitoring
 
+
     def init_classes(self):
         self.ui_setup = UISetup(self)
         self.channel_manager = ChannelManager(self)
         self.window_manager = OutputWindowManager(self)
         self.output_windows_ui = {}
+
         self.open_window_positions = []
 
     def toggle_reorder(self):
@@ -216,6 +220,7 @@ class RedisMonitor(QWidget):
 
     def stop_monitoring(self):
         self.channel_manager.channel_last_update.clear()
+
         if self.subscriber:
             self.subscriber.terminate()
             self.status_bar.showMessage("Status: Not Monitoring")
@@ -225,5 +230,6 @@ class RedisMonitor(QWidget):
 
     def closeEvent(self, event):
         for window in self.output_windows_ui.values():
+
             window.close()
         event.accept()

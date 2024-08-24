@@ -3,11 +3,13 @@ from redis.exceptions import (
     ConnectionError as RedisConnectionError,
     TimeoutError as RedisTimeoutError,
 )
+
 from PyQt5.QtCore import QThread, pyqtSignal
 
 
 class RedisSubscriber(QThread):
     new_channel = pyqtSignal(str, str, str)  # Emit both channel name and data
+
 
     def __init__(self, redis_url, channel_pattern):
         super().__init__()
@@ -28,3 +30,4 @@ class RedisSubscriber(QThread):
             except (RedisTimeoutError, RedisConnectionError):
                 print("wait for connection")
                 self.new_channel.emit("", "", "Wait For Connection ...")
+

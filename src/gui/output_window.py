@@ -16,6 +16,7 @@ class OutputWindowUI(QDialog):
         super().__init__(parent)
         self.channel_name = channel_name
         self.message_counter = 0
+
         self.setWindowTitle(f"Output for {channel_name}")
         layout = QVBoxLayout()
 
@@ -34,6 +35,7 @@ class OutputWindowUI(QDialog):
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
         self.monospaced_font = QFont(font_family)
 
+
         self.setLayout(layout)
         self.setWindowFlags(Qt.Tool)
 
@@ -46,6 +48,7 @@ class OutputWindowUI(QDialog):
             white-space: pre-wrap;'>{data}</span>
         """
         self.output_text.append(message_number + formatted_data)
+
 
     def export_content(self):
         options = QFileDialog.Options()
