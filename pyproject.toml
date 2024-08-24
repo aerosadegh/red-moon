@@ -11,6 +11,8 @@ packages = [{include = "red-moon"}]
 python = "^3.11"
 redis = "^5.0.8"
 PyQt5 = "5.15.11"
+plyer = "^2.1.0"
+
 
 
 [tool.poetry.group.dev.dependencies]
@@ -28,7 +30,6 @@ build-backend = "poetry.core.masonry.api"
 python_version = "3.11"
 # warn_return_any = true
 ignore_missing_imports = true
-ignore_missing_imports_per_module = true
 warn_unused_configs = true
 exclude = [
     "venv/*",  # TOML literal string (single-quotes, no escaping necessary)
@@ -56,6 +57,7 @@ color_output = true
 max-line-length = 99
 disable = [
   "import-outside-toplevel",
+  "no-name-in-module",
   "broad-except",
   "bare-except",
   "unused-import",
@@ -71,6 +73,8 @@ disable = [
   "protected-access",
   "too-few-public-methods",
 ]
+
+
 
 [tool.pylint.design]
 # limiting the number of returns might discourage
@@ -103,7 +107,7 @@ line-length = 99
 
 
 [tool.flake8]
-ignore = ['E231', 'E241']
+ignore = ['E231', 'E241', "W503"]
 max-line-length = 99
 per-file-ignores = [
   # '__init__.py:F401',
