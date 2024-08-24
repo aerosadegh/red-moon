@@ -1,8 +1,7 @@
-import os
 import sys
 
 from PyQt5.QtWidgets import QApplication
-from gui.main_window import RedisMonitor
+from gui import RedisMonitor
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
