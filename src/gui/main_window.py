@@ -167,8 +167,11 @@ class ChannelManager:
                 current_time - last_update_time > 60
             ):  # Check if 1 minute has passed since last update
                 notification.notify(
-                    "No Data Received",
-                    f"No data received for channel '{channel_name}' in the last minute.",
+                    title="No Data Received",
+                    message=f"No data received for channel '{channel_name}' in the last minute.",
+                    app_name="Red Moon",
+                    app_icon=resource_path("assets/red-moon.ico"),
+                    timeout=30,
                 )
 
 
